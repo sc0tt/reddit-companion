@@ -19,6 +19,9 @@ function vote(likes) {
 
 function toggleSaved() {
   info.saved = !info.saved
+  if(localStorage['showTooltips'] == "true") {
+    info.saved ? $('#save').attr('title','Unsave') : $('#save').attr('title','Save')
+  }
   update()
   if (info.saved) {
     port.postMessage({action:'save'})
@@ -61,11 +64,25 @@ function update() {
     $('#bar').removeClass('subreddit')
   }
   $('#comments span').text(info.num_comments)
+  
+  if(localStorage['showTooltips'] == "true") {
+    $('#logo').attr('title','Reddit Home')
+	$('#comments').attr('title','View Comments')
+	$('#upvote').attr('title','Upvote')
+	$('#downvote').attr('title','Downvote')
+	$('#save').attr('title','Save')
+	$('#login').attr('title','Login')
+	$('#close').attr('title','Close')
+    $('#score').attr('title',info.score+' upvotes')
+    $('#title').attr('title',info.title)
+    $('#subreddit').attr('title','/r/'+info.subreddit)
+  }
 }
 
 $(document).ready(function() {
   $(window).resize(fitHeight)
-
+  
+  
   $('#comments').click(function(e) {
     clickOpenURL(e, 'http://reddit.com'+info.permalink)
   })
