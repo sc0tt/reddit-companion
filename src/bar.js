@@ -73,7 +73,7 @@ function update() {
 	$('#save').attr('title','Save')
 	$('#login').attr('title','Login')
 	$('#close').attr('title','Close')
-    $('#score').attr('title',info.score+' upvotes')
+    $('#score').attr('title',info.score == null ? "Error" : info.score+' upvotes') //the null seems to be caused by slow data. Usually fixed when update() is called for the second time.
     $('#title').attr('title',info.title)
     $('#subreddit').attr('title','/r/'+info.subreddit)
   }
@@ -81,7 +81,6 @@ function update() {
 
 $(document).ready(function() {
   $(window).resize(fitHeight)
-  
   
   $('#comments').click(function(e) {
     clickOpenURL(e, 'http://reddit.com'+info.permalink)
