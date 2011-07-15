@@ -54,7 +54,7 @@ function update() {
   } else {
     $('#bar').removeClass('saved')
   }
-  $('#score').text(info.score)
+  $('#score').text(info.score).attr('title',info.score == null ? "Error" : info.score+' upvotes')
   if (info.subreddit) {
     var subPath = '/r/'+info.subreddit
     $('#subreddit')
@@ -65,6 +65,12 @@ function update() {
   }
   $('#comments span').text(info.num_comments)
   
+  
+}
+
+$(document).ready(function() {
+  $(window).resize(fitHeight)
+  
   if(localStorage['showTooltips'] == "true") {
     $('#logo').attr('title','Reddit Home')
 	$('#comments').attr('title','View Comments')
@@ -73,14 +79,9 @@ function update() {
 	$('#save').attr('title','Save')
 	$('#login').attr('title','Login')
 	$('#close').attr('title','Close')
-    $('#score').attr('title',info.score == null ? "Error" : info.score+' upvotes') //the null seems to be caused by slow data. Usually fixed when update() is called for the second time.
     $('#title').attr('title',info.title)
     $('#subreddit').attr('title','/r/'+info.subreddit)
   }
-}
-
-$(document).ready(function() {
-  $(window).resize(fitHeight)
   
   $('#comments').click(function(e) {
     clickOpenURL(e, 'http://reddit.com'+info.permalink)
