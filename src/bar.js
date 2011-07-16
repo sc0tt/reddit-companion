@@ -54,7 +54,7 @@ function update() {
   } else {
     $('#bar').removeClass('saved')
   }
-  $('#score').text(info.score).attr('title',info.score == null ? "Error" : info.score+' upvotes')
+  $('#score').text(info.score)
   if (info.subreddit) {
     var subPath = '/r/'+info.subreddit
     $('#subreddit')
@@ -65,7 +65,6 @@ function update() {
   }
   $('#comments span').text(info.num_comments)
   
-  
 }
 
 $(document).ready(function() {
@@ -74,13 +73,8 @@ $(document).ready(function() {
   if(localStorage['showTooltips'] == "true") {
     $('#logo').attr('title','Reddit Home')
 	$('#comments').attr('title','View Comments')
-	$('#upvote').attr('title','Upvote')
-	$('#downvote').attr('title','Downvote')
 	$('#save').attr('title','Save')
-	$('#login').attr('title','Login')
 	$('#close').attr('title','Close')
-    $('#title').attr('title',info.title)
-    $('#subreddit').attr('title','/r/'+info.subreddit)
   }
   
   $('#comments').click(function(e) {
