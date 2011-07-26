@@ -26,12 +26,15 @@ function scrapeThingInfo(thing) {
 
   info.score = parseInt(thing.querySelector('.score'+scoreClass).innerText)
   
-  info.subreddit = (thing.querySelector('a.subreddit') || document.querySelector('.redditname:first-child')).innerText
+  info.subreddit = (thing.querySelector('a.subreddit') || document.querySelector('.redditname > a')).innerText
 
   info.num_comments = parseInt(thing.querySelector('.comments').innerText) || 0
 
   info.permalink = thing.querySelector('.comments').href.match(/.*reddit.com(\/.+)/)[1]
-
+  
+  info.domain = thing.querySelector('.domain > a').innerText
+  info.is_self = info.domain == ('self.' + info.subreddit)
+  
   console.log('Scraped info from page:', info)
   return info
 }

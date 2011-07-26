@@ -1,3 +1,16 @@
+function initOptions() {
+  defaultOptions = {
+    'showTooltips': true,
+    'ignoreSelfPosts': false
+  }
+
+  for (key in defaultOptions) {
+    if (localStorage[key] == undefined) {
+      localStorage[key] = defaultOptions[key]
+    }
+  }
+}
+
 redditInfo = {
   getURL: function(url) {
     return this.url[url]
@@ -397,8 +410,12 @@ chrome.extension.onConnect.addListener(function(port) {
       var tab = port.sender.tab,
           info = setPageActionIcon(tab)
       if (info) {
-        console.log('Recognized page '+tab.url, info)
-        tabStatus.showInfo(tab.id, info.name)
+        if (localStorage['ignoreSelfPosts'] == 'true' && info.is_self) {
+          console.log('Ignoring self post', info)
+        } else {
+          console.log('Recognized page '+tab.url, info)
+          tabStatus.showInfo(tab.id, info.name)
+        }
       }
       break
     case 'bar':
@@ -426,6 +443,7 @@ function checkMail() {
   })
 }
 
+initOptions()
 console.log('Shine loaded.')
 redditInfo.init()
 window.setInterval(checkMail, 5*60*1000)
