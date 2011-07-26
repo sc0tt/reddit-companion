@@ -4,6 +4,7 @@ function initOptions() {
     'autoShowSelf': true,
     'showTooltips': true,
     'checkMail': true,
+	'notifyTime': 30
   }
 
   for (key in defaultOptions) {
@@ -391,13 +392,13 @@ mailNotifier = {
     if (this.notification) {
       this.notification.cancel()
     }
-
+	
     var n = this.notification =
       webkitNotifications.createNotification('images/reddit-mail.svg', title, text)
-    
-    setTimeout(function() {
+	
+	setTimeout(function() {
         n.cancel();
-    }, 30000);
+    }, parseInt(localStorage['notifyTime'])*1000)
     
     this.notification.onclick = function() {
       window.open('http://www.reddit.com/message/unread/')
