@@ -1,7 +1,9 @@
 function initOptions() {
   defaultOptions = {
+    'autoShow': true,
+    'autoShowSelf': true,
     'showTooltips': true,
-    'ignoreSelfPosts': false
+    'checkMail': true,
   }
 
   for (key in defaultOptions) {
@@ -12,13 +14,34 @@ function initOptions() {
 }
 
 redditInfo = {
+  freshAgeThreshold: 5*60,
+
+  url: {},
+  fullname: {
+    _shine_demo: {
+      title: 'companion bar',
+      score: '\u221e',
+      num_comments: '7',
+      likes: true,
+      _fake: true
+    }
+  },
+  fetching: {},
+
   getURL: function(url) {
     return this.url[url]
   },
   
   setURL: function(url, info) {
-    this.url[url] = info
-    this.fullname[info.name] = info
+    info._ts = info._ts || Date.now()
+    var stored = this.fullname[info.name]
+    if (!stored || stored._ts < info._ts) {
+      this.url[url] = info
+      this.fullname[info.name] = info
+      console.log('Stored reddit info for', url, info)
+    } else {
+      console.log('Received info not newer than stored info. Did not store.', stored, info)
+    }
   },
 
   request: function(options) {
@@ -32,9 +55,9 @@ redditInfo = {
       url: 'http://www.reddit.com/api/me.json',
       success: function(resp) {
         if (resp.data) {
-          console.log('Updated reddit info', resp.data)
+          console.log('Updated reddit user data', resp.data)
           this.storeModhash(resp.data.modhash)
-          callback(resp.data)
+          if (callback) { callback(resp.data) }
         }
       }.bind(this),
       error: function() { callback(false) }
@@ -61,47 +84,76 @@ redditInfo = {
       data: params,
       success: function(resp) {
         if (resp.data) {
-          redditInfo.modhash = resp.data.modhash
+          this.storeModhash(resp.data.modhash)
           if (resp.data.children.length) {
             var info = resp.data.children[0].data
-            redditInfo.setURL(info.url, info)
+            this.setURL(info.url, info)
             barStatus.updateInfo(info)
+            callback(info)
+          } else {
+            callback(null)
           }
-          if (callback) { callback(info) }
+        } else {
+          callback(false, resp)
         }
-      },
-      error: function() {
-        if (callback) { callback(null) }
-      }
+      }.bind(this),
+      error: function() { callback(false) }
     })
   },
-
-  lookupURL: function(url, callback) {
-    this._queryInfo({url:url}, callback)
-  },
-
-
-  lookupName: function(name, callback) {
-    this._queryInfo({id:name}, callback)
-  },
-
-  _storedLookup: function(key, array, lookup, callback) {
-    var stored = array[key]
+  
+  _storedLookup: function(keyName, key, array, useStored, callback) {
+    // Internal rate limited cached info getter.
+    //
+    // Look up `key` from `array` and call `callback` with the stored data immediately if
+    // `useStored` is true and stored info is available. If stored data is
+    // currently in the process of being refreshed or it is older than
+    // redditInfo.freshAgeThreshold seconds old, false is returned. Otherwise,
+    // the data is fetched from reddit and `callback` is invoked with the
+    // result.
+    var stored = array[key],
+        storedAge = 0,
+        now = Date.now()
     if (stored) {
-      // Return our stored data right away, refreshing in the background.
-      callback(stored)
-      lookup(key)
-    } else {
-      lookup(key, callback)
+      if (useStored) {
+        // Return our stored data right away.
+        callback(stored)
+      }
+
+      if (stored._fake) {
+        console.log('Skipping fake info request.')
+        return false
+      }
+
+      if (this.fetching[stored.name]) {
+        console.log('Info already being fetched. Skipping update.', stored)
+        return false
+      }
+    
+      storedAge = Math.floor((now - stored._ts) / 1000)
+      if (storedAge < redditInfo.freshAgeThreshold) {
+        console.log('Info is', storedAge, 'seconds old. Skipping update.', stored)
+        return false
+      }
+
+      // Mark that we are fetching the data from reddit
+      this.fetching[stored.name] = true
     }
+
+    var queryParams = {age:storedAge}
+    queryParams[keyName] = key
+    this._queryInfo(queryParams, function() {
+      if (stored) { delete this.fetching[stored.name] }
+      callback.apply(null, arguments)
+    }.bind(this))
+    return true
   },
 
-  lookupURLStored: function(url, callback) {
-    this._storedLookup(url, this.url, this.lookupURL.bind(this), callback)
+  lookupURL: function(url, useStored, callback) {
+    this._storedLookup('url', url, this.url, useStored, callback)
   },
 
-  lookupNameStored: function(name, callback) {
-    this._storedLookup(name, this.fullname, this.lookupName.bind(this), callback)
+  lookupName: function(name, useStored, callback) {
+    this._storedLookup('id', name, this.fullname, useStored, callback)
   },
 
   _thingAction: function(action, data, callback) {
@@ -149,11 +201,7 @@ redditInfo = {
     
   storeModhash: function(modhash) {
     localStorage['modhash'] = this.modhash = modhash
-  },
-
-  url: {}, 
-  fullname: {},
-  lastMailCheckTime: null,
+  }
 }
 
 tabStatus = {
@@ -218,6 +266,7 @@ tabStatus = {
 
 barStatus = {
   fullname: {},
+  hidden: {},
 
   add: function(port, fullname) {
     var barData = {port:port, fullname:fullname}
@@ -226,6 +275,9 @@ barStatus = {
       this.fullname[fullname] = []
     }
     this.fullname[fullname].push(barData)
+    if (this.hidden[barData.fullname]) {
+      delete this.hidden[barData.fullname]
+    }
     port.onMessage.addListener(this.handleCommand.bind(this, barData))
     port.onDisconnect.addListener(this.remove.bind(this, barData))
     tabStatus.addBar(port.sender.tab.id, barData)
@@ -245,8 +297,8 @@ barStatus = {
   },
 
   update: function(barData, stored) {
-    var lookup = stored ? 'lookupNameStored' : 'lookupName'
-    redditInfo[lookup](barData.fullname, function(info) {
+    redditInfo.lookupName(barData.fullname, stored, function(info) {
+      if (info == null) { return }
       console.log('Updating bar', barData)
       barData.port.postMessage({
         action: 'update',
@@ -289,12 +341,14 @@ barStatus = {
         console.log('Modifying', msg)
         redditInfo[msg.action](barData.fullname, updateAfter)
         break
-      }
+      case 'close':
+        this.hidden[barData.fullname] = true
+        break
+    }
   }
 }
 
 mailNotifier = {
-  newCount: 0,
   lastSeen: null,
   notify: function(messages) {
     var newIdx = null,
@@ -308,9 +362,8 @@ mailNotifier = {
         this.lastSeen = Math.max(this.lastSeen, messageTime)
       }
     }
-    this.newCount += newCount
 
-    console.log('New messages: ', newCount, this.newCount)
+    console.log('New messages: ', newCount)
 
     var title, text
     if (newCount == 1) {
@@ -319,7 +372,7 @@ mailNotifier = {
       text = message.data.body
     } else if (newCount > 1) {
       title = 'reddit: new messages!'
-      text = 'You have ' + this.newCount + ' new messages.'
+      text = 'You have ' + messages.length + ' new messages.'
     }
 
     if (newCount > 0) {
@@ -328,7 +381,6 @@ mailNotifier = {
   },
 
   clear: function() {
-    this.newCount = 0
     if (this.notification) {
       this.notification.cancel()
     }
@@ -341,7 +393,7 @@ mailNotifier = {
     }
 
     var n = this.notification =
-      webkitNotifications.createNotification('images/reddit_mail_icon.svg', title, text)
+      webkitNotifications.createNotification('images/reddit-mail.svg', title, text)
 
     this.notification.onclick = function() {
       window.open('http://www.reddit.com/message/unread/')
@@ -352,9 +404,38 @@ mailNotifier = {
   }
 }
 
+mailChecker = {
+  checkInterval: 5*60*1000,
+
+  interval: null,
+  start: function() {
+    if (!this.interval) {
+      console.log('Starting periodic mail check.')
+      this.interval = window.setInterval(this.check, this.checkInterval)
+      this.check()
+    }
+  },
+  stop: function() {
+    if (this.interval) {
+      console.log('Stopping periodic mail check.')
+      window.clearInterval(this.interval)
+      this.interval = null
+    }
+  },
+  check: function() {
+    redditInfo.update(function(info) {
+      if (info.has_mail) {
+        redditInfo.fetchMail(mailNotifier.notify.bind(mailNotifier))
+      } else {
+        mailNotifier.clear()
+      }
+    })
+  }
+}
+
 function setPageActionIcon(tab) {
   if (/^http:\/\/.*/.test(tab.url)) {
-    var info = redditInfo.url[tab.url]
+    var info = redditInfo.getURL(tab.url)
     if (info) {
       chrome.pageAction.setIcon({tabId:tab.id, path:'/images/reddit.png'})
     } else { 
@@ -365,7 +446,11 @@ function setPageActionIcon(tab) {
   }
 }
 
+var workingPageActions = {}
 function onActionClicked(tab) {
+  if (tab.id in workingPageActions) { return }
+  workingPageActions[tab.id] = true
+
   var frame = 0
   var workingAnimation = window.setInterval(function() {
     try {
@@ -376,9 +461,10 @@ function onActionClicked(tab) {
     frame = (frame + 1) % 6
   }, 200)
   
-  redditInfo.lookupURLStored(tab.url, function(info) {
+  redditInfo.lookupURL(tab.url, true, function(info) {
     window.clearInterval(workingAnimation)
     setPageActionIcon(tab)
+    delete workingPageActions[tab.id]
     
     if (info) {
       tabStatus.showInfo(tab.id, info.name)
@@ -410,8 +496,12 @@ chrome.extension.onConnect.addListener(function(port) {
       var tab = port.sender.tab,
           info = setPageActionIcon(tab)
       if (info) {
-        if (localStorage['ignoreSelfPosts'] == 'true' && info.is_self) {
+        if (localStorage['autoShow'] == 'false') {
+          console.log('Auto-show disabled. Ignoring reddit page', info)
+        } else if (localStorage['autoShowSelf'] == 'false' && info.is_self) {
           console.log('Ignoring self post', info)
+        } else if (barStatus.hidden[info.name]) {
+          console.log('Bar was closed on this page. Ignoring.', info)
         } else {
           console.log('Recognized page '+tab.url, info)
           tabStatus.showInfo(tab.id, info.name)
@@ -424,6 +514,16 @@ chrome.extension.onConnect.addListener(function(port) {
   }
 })
 
+window.addEventListener('storage', function(e) {
+  if (e.key == 'checkMail') {
+    if (e.newValue == 'true') {
+      mailChecker.start()
+    } else {
+      mailChecker.stop()
+    }
+  }
+}, false)
+
 // Show page action for existing tabs.
 chrome.windows.getAll({populate:true}, function(wins) {
   wins.forEach(function(win) {
@@ -433,18 +533,11 @@ chrome.windows.getAll({populate:true}, function(wins) {
   })
 })
 
-function checkMail() {
-  redditInfo.update(function(info) {
-    if (info.has_mail) {
-      redditInfo.fetchMail(mailNotifier.notify.bind(mailNotifier))
-    } else {
-      mailNotifier.clear()
-    }
-  })
-}
-
 initOptions()
 console.log('Shine loaded.')
 redditInfo.init()
-window.setInterval(checkMail, 5*60*1000)
-checkMail()
+if (localStorage['checkMail'] == 'true') {
+  mailChecker.start()
+} else {
+  redditInfo.update()
+}
